@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 702d7ff79993c5c4a96fdb286cc2e570
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 2100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 68184
+  packageName: Japanese Street Lamp
+  packageVersion: 1.2.0
+  assetPath: Assets/Japanese Street Lamp/Scenes/Assets/Tile_Ground_A_01.mat
+  uploadId: 828776

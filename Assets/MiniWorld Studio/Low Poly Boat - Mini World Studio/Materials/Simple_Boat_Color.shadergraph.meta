@@ -1,0 +1,17 @@
+fileFormatVersion: 2
+guid: 1ab54f6ae5ac19a42ba32ef70dbe8fb0
+ScriptedImporter:
+  internalIDToNameTable: []
+  externalObjects: {}
+  serializedVersion: 2
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+  script: {fileID: 11500000, guid: 625f186215c104763be7675aa2d941aa, type: 3}
+AssetOrigin:
+  serializedVersion: 1
+  productId: 388592
+  packageName: Low Poly Boat - Mini World Studio
+  packageVersion: 1.0
+  assetPath: Assets/MiniWorld Studio/Low Poly Boat - Mini World Studio/Materials/Simple_Boat_Color.shadergraph
+  uploadId: 940060
