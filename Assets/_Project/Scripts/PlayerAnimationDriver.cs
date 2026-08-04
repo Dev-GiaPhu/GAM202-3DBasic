@@ -9,7 +9,6 @@ namespace ZombieInfinite
         private static readonly int RunState = Animator.StringToHash("Player_Run");
 
         [SerializeField] private Animator animator;
-        [SerializeField, Min(0f)] private float movementThreshold = 0.1f;
 
         private CharacterController controller;
         private int currentState;
@@ -32,19 +31,7 @@ namespace ZombieInfinite
             }
 
             Vector3 velocity = controller.velocity;
-            velocity.y = 0f;
-            Play(velocity.sqrMagnitude > movementThreshold * movementThreshold ? RunState : IdleState);
-        }
-
-        private void Play(int state)
-        {
-            if (currentState == state)
-            {
-                return;
-            }
-
-            currentState = state;
-            animator.CrossFade(state, 0.12f);
+            animator.SetFloat("Speed", velocity.magnitude);
         }
     }
 }
