@@ -22,6 +22,23 @@ namespace ZombieInfinite
         [SerializeField]
         private Vector3 thirdPersonOffset = new(0.65f, 0.25f, -4.2f);
 
+        [Header("Head Follow")]
+        [Tooltip("Khớp Head của model. Để trống sẽ dùng Eye Height trên Player.")]
+        [SerializeField]
+        private Transform headTarget;
+
+        [Tooltip("Vị trí camera tương đối với khớp Head.")]
+        [SerializeField]
+        private Vector3 headPositionOffset;
+
+        [Tooltip("Tốc độ camera đi theo chuyển động của đầu. Đặt 0 để bám ngay lập tức.")]
+        [SerializeField, Min(0f)]
+        private float headFollowSpeed = 25f;
+
+        [Tooltip("Tỷ lệ góc roll camera so với góc nghiêng Q/E của cơ thể.")]
+        [SerializeField, Range(0f, 2f)]
+        private float leanRollMultiplier = 1f;
+
         [Header("Mouse Look")]
         [SerializeField, Min(0f)] private float mouseSensitivity = 0.12f;
 
@@ -32,14 +49,24 @@ namespace ZombieInfinite
         [SerializeField] private bool startInFirstPerson;
         [SerializeField] private bool lockCursorOnStart = true;
 
+        [Header("Damage Shake")]
+        [SerializeField, Min(0.01f)] private float damageShakeDuration = 0.28f;
+        [SerializeField, Min(0f)] private float damageShakePosition = 0.12f;
+        [SerializeField, Min(0f)] private float damageShakeRotation = 2.2f;
+
         private Transform cameraRoot;
         private Transform pitchPivot;
         private Transform firstPersonAnchor;
         private Transform thirdPersonAnchor;
+        private TopDownPlayerController playerController;
+        private GameMenuController gameMenu;
 
         private float yaw;
         private float pitch;
         private bool initialized;
+        private float shakeRemaining;
+        private float shakeIntensity;
+        private Vector3 shakeEuler;
 
         public bool IsFirstPerson { get; private set; }
 
@@ -63,7 +90,8 @@ namespace ZombieInfinite
                 BuildCameraRig();
             }
 
-            if (lockCursorOnStart)
+            if (lockCursorOnStart &&
+                (gameMenu == null || !gameMenu.GameplayBlocked))
             {
                 LockCursor();
             }
@@ -81,8 +109,6 @@ namespace ZombieInfinite
                 return;
             }
 
-            HandleCursor();
-
             if (Keyboard.current != null &&
                 Keyboard.current.vKey.wasPressedThisFrame)
             {
@@ -93,6 +119,21 @@ namespace ZombieInfinite
             {
                 HandleMouseLook();
             }
+        }
+
+        private void LateUpdate()
+        {
+            if (!initialized)
+            {
+                return;
+            }
+
+            if (gameMenu != null && gameMenu.GameplayBlocked)
+            {
+                return;
+            }
+
+            UpdateHeadFollowAndLean();
         }
 
         /// <summary>
@@ -148,6 +189,9 @@ namespace ZombieInfinite
                 return;
             }
 
+            gameMenu = target.GetComponent<GameMenuController>() ??
+                target.GetComponentInParent<GameMenuController>();
+
             if (firstPersonCamera == null || thirdPersonCamera == null)
             {
                 Debug.LogError(
@@ -182,6 +226,8 @@ namespace ZombieInfinite
             thirdPersonAnchor.localRotation = Quaternion.identity;
             thirdPersonAnchor.localScale = Vector3.one;
 
+            playerController = target.GetComponent<TopDownPlayerController>();
+
             AttachCamera(firstPersonCamera, firstPersonAnchor);
             AttachCamera(thirdPersonCamera, thirdPersonAnchor);
 
@@ -213,25 +259,73 @@ namespace ZombieInfinite
             target.rotation = Quaternion.Euler(0f, yaw, 0f);
 
             // Chỉ camera xoay lên xuống.
-            pitchPivot.localRotation =
-                Quaternion.Euler(pitch, 0f, 0f);
+            UpdateViewRotation();
         }
 
-        private void HandleCursor()
+        public void TriggerDamageShake(float intensity = 1f)
         {
-            if (Keyboard.current != null &&
-                Keyboard.current.escapeKey.wasPressedThisFrame)
+            shakeRemaining = damageShakeDuration;
+            shakeIntensity = Mathf.Max(shakeIntensity, Mathf.Max(0f, intensity));
+        }
+
+        private void UpdateHeadFollowAndLean()
+        {
+            Vector3 targetPosition = headTarget != null
+                ? headTarget.TransformPoint(headPositionOffset)
+                : target.TransformPoint(new Vector3(0f, eyeHeight, 0f));
+
+            if (headFollowSpeed <= 0f)
             {
-                UnlockCursor();
+                cameraRoot.position = targetPosition;
+            }
+            else
+            {
+                float interpolation = 1f - Mathf.Exp(
+                    -headFollowSpeed * Time.deltaTime);
+
+                cameraRoot.position = Vector3.Lerp(
+                    cameraRoot.position,
+                    targetPosition,
+                    interpolation);
+            }
+
+            UpdateDamageShake();
+
+            UpdateViewRotation();
+        }
+
+        private void UpdateDamageShake()
+        {
+            if (shakeRemaining <= 0f)
+            {
+                shakeEuler = Vector3.zero;
+                shakeIntensity = 0f;
                 return;
             }
 
-            if (Mouse.current != null &&
-                Mouse.current.leftButton.wasPressedThisFrame &&
-                Cursor.lockState != CursorLockMode.Locked)
+            shakeRemaining = Mathf.Max(0f, shakeRemaining - Time.unscaledDeltaTime);
+            float fade = Mathf.Clamp01(shakeRemaining / damageShakeDuration);
+            float strength = shakeIntensity * fade;
+            cameraRoot.position += Random.insideUnitSphere * (damageShakePosition * strength);
+            shakeEuler = Random.insideUnitSphere * (damageShakeRotation * strength);
+        }
+
+        private void UpdateViewRotation()
+        {
+            if (pitchPivot == null)
             {
-                LockCursor();
+                return;
             }
+
+            float leanAngle = playerController != null
+                ? playerController.UpperBodyLeanAngle * leanRollMultiplier
+                : 0f;
+
+            // Cả FPS và TPS đều nằm dưới pivot này nên cùng nhận pitch và roll.
+            pitchPivot.localRotation = Quaternion.Euler(
+                pitch + shakeEuler.x,
+                shakeEuler.y,
+                leanAngle + shakeEuler.z);
         }
 
         private static void AttachCamera(
@@ -279,6 +373,11 @@ namespace ZombieInfinite
         {
             eyeHeight = Mathf.Max(0f, eyeHeight);
             mouseSensitivity = Mathf.Max(0f, mouseSensitivity);
+            headFollowSpeed = Mathf.Max(0f, headFollowSpeed);
+            leanRollMultiplier = Mathf.Clamp(
+                leanRollMultiplier,
+                0f,
+                2f);
 
             if (pitchLimits.x > pitchLimits.y)
             {
