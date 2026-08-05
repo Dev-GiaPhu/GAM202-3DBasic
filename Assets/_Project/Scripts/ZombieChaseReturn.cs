@@ -1,4 +1,5 @@
 using System.Collections;
+using System;
 using UnityEngine;
 using UnityEngine.AI;
 using UnityEngine.Serialization;
@@ -72,6 +73,7 @@ namespace ZombieInfinite
         public float HealthNormalized => maxHealth > 0
             ? Mathf.Clamp01((float)currentHitPoints / maxHealth)
             : 0f;
+        public event Action<int, int> HealthChanged;
 
         private void Awake()
         {
@@ -183,7 +185,9 @@ namespace ZombieInfinite
 
             currentHitPoints = instantKill
                 ? 0
-                : currentHitPoints - Mathf.Max(0, amount);
+                : Mathf.Clamp(currentHitPoints - Mathf.Max(0, amount), 0, maxHealth);
+
+            HealthChanged?.Invoke(currentHitPoints, maxHealth);
 
             GetComponent<ZombieWorldHealthBar>()?.ShowTemporarily();
             if (currentHitPoints <= 0)
