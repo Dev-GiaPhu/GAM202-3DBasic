@@ -128,10 +128,8 @@ namespace ZombieInfinite
                 gameObject.AddComponent<SurvivalHUD>();
             }
 
-            if (GetComponent<MiniMapHUD>() == null)
-            {
-                gameObject.AddComponent<MiniMapHUD>();
-            }
+            // MiniMapHUD được đặt sẵn trong Canvas để có thể chỉnh RectTransform,
+            // khung và Sprite icon trực quan trong Unity Editor.
 
             if (GetComponent<PlayerDamageFeedback>() == null)
             {
