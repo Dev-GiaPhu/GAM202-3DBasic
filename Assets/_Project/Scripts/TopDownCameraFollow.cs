@@ -54,12 +54,23 @@ namespace ZombieInfinite
         [SerializeField, Min(0f)] private float damageShakePosition = 0.12f;
         [SerializeField, Min(0f)] private float damageShakeRotation = 2.2f;
 
+        [Header("Aim Down Sights")]
+        [SerializeField, Range(0.2f, 1f)] private float aimFovMultiplier = 0.62f;
+        [SerializeField, Min(0.1f)] private float aimZoomSpeed = 10f;
+
+        [Header("Sprint Camera Effect")]
+        [SerializeField, Min(0f)] private float sprintFovBonus = 9f;
+        [SerializeField, Min(0f)] private float sprintEffectSpeed = 7f;
+        [SerializeField, Min(0f)] private float sprintBobAmplitude = 0.035f;
+        [SerializeField, Min(0f)] private float sprintBobFrequency = 12f;
+
         private Transform cameraRoot;
         private Transform pitchPivot;
         private Transform firstPersonAnchor;
         private Transform thirdPersonAnchor;
         private TopDownPlayerController playerController;
         private GameMenuController gameMenu;
+        private PlayerSurvivalStats survivalStats;
 
         private float yaw;
         private float pitch;
@@ -67,8 +78,13 @@ namespace ZombieInfinite
         private float shakeRemaining;
         private float shakeIntensity;
         private Vector3 shakeEuler;
+        private float firstPersonBaseFov;
+        private float thirdPersonBaseFov;
+        private float sprintEffectWeight;
+        private float sprintBobTime;
 
         public bool IsFirstPerson { get; private set; }
+        public bool IsAiming { get; private set; }
 
         public Transform AimTransform
         {
@@ -127,6 +143,14 @@ namespace ZombieInfinite
             {
                 return;
             }
+
+            bool gameplayActive = gameMenu == null || !gameMenu.GameplayBlocked;
+            IsAiming = gameplayActive &&
+                Cursor.lockState == CursorLockMode.Locked &&
+                Mouse.current != null &&
+                Mouse.current.rightButton.isPressed;
+
+            UpdateCameraFov(gameplayActive);
 
             if (gameMenu != null && gameMenu.GameplayBlocked)
             {
@@ -227,6 +251,10 @@ namespace ZombieInfinite
             thirdPersonAnchor.localScale = Vector3.one;
 
             playerController = target.GetComponent<TopDownPlayerController>();
+            survivalStats = target.GetComponent<PlayerSurvivalStats>();
+
+            firstPersonBaseFov = firstPersonCamera.Lens.FieldOfView;
+            thirdPersonBaseFov = thirdPersonCamera.Lens.FieldOfView;
 
             AttachCamera(firstPersonCamera, firstPersonAnchor);
             AttachCamera(thirdPersonCamera, thirdPersonAnchor);
@@ -289,9 +317,59 @@ namespace ZombieInfinite
                     interpolation);
             }
 
+            UpdateSprintBob();
+
             UpdateDamageShake();
 
             UpdateViewRotation();
+        }
+
+        private void UpdateCameraFov(bool gameplayActive)
+        {
+            bool sprinting = gameplayActive &&
+                survivalStats != null &&
+                survivalStats.IsSprinting &&
+                !IsAiming;
+            float sprintTarget = sprinting ? 1f : 0f;
+            float sprintBlend = 1f - Mathf.Exp(
+                -sprintEffectSpeed * Time.unscaledDeltaTime);
+            sprintEffectWeight = Mathf.Lerp(
+                sprintEffectWeight,
+                sprintTarget,
+                sprintBlend);
+
+            float firstTarget = IsAiming
+                ? firstPersonBaseFov * aimFovMultiplier
+                : firstPersonBaseFov + sprintFovBonus * sprintEffectWeight;
+            float thirdTarget = IsAiming
+                ? thirdPersonBaseFov * aimFovMultiplier
+                : thirdPersonBaseFov + sprintFovBonus * sprintEffectWeight;
+            float zoomBlend = 1f - Mathf.Exp(
+                -aimZoomSpeed * Time.unscaledDeltaTime);
+
+            firstPersonCamera.Lens.FieldOfView = Mathf.Lerp(
+                firstPersonCamera.Lens.FieldOfView,
+                firstTarget,
+                zoomBlend);
+            thirdPersonCamera.Lens.FieldOfView = Mathf.Lerp(
+                thirdPersonCamera.Lens.FieldOfView,
+                thirdTarget,
+                zoomBlend);
+        }
+
+        private void UpdateSprintBob()
+        {
+            if (sprintEffectWeight <= 0.001f || sprintBobAmplitude <= 0f)
+            {
+                return;
+            }
+
+            sprintBobTime += Time.deltaTime * sprintBobFrequency;
+            float vertical = Mathf.Sin(sprintBobTime * 2f) * sprintBobAmplitude;
+            float horizontal = Mathf.Cos(sprintBobTime) * sprintBobAmplitude * 0.55f;
+            cameraRoot.position +=
+                cameraRoot.up * (vertical * sprintEffectWeight) +
+                cameraRoot.right * (horizontal * sprintEffectWeight);
         }
 
         private void UpdateDamageShake()
@@ -374,6 +452,12 @@ namespace ZombieInfinite
             eyeHeight = Mathf.Max(0f, eyeHeight);
             mouseSensitivity = Mathf.Max(0f, mouseSensitivity);
             headFollowSpeed = Mathf.Max(0f, headFollowSpeed);
+            aimFovMultiplier = Mathf.Clamp(aimFovMultiplier, 0.2f, 1f);
+            aimZoomSpeed = Mathf.Max(0.1f, aimZoomSpeed);
+            sprintFovBonus = Mathf.Max(0f, sprintFovBonus);
+            sprintEffectSpeed = Mathf.Max(0f, sprintEffectSpeed);
+            sprintBobAmplitude = Mathf.Max(0f, sprintBobAmplitude);
+            sprintBobFrequency = Mathf.Max(0f, sprintBobFrequency);
             leanRollMultiplier = Mathf.Clamp(
                 leanRollMultiplier,
                 0f,

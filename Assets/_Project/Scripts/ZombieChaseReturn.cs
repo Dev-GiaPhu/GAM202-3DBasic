@@ -293,7 +293,7 @@ namespace ZombieInfinite
         private IEnumerator DisableAfterDeath()
         {
             yield return new WaitForSeconds(deathDelay);
-            gameObject.SetActive(false);
+            Destroy(gameObject);
         }
 
         private static float PlanarDistance(Vector3 from, Vector3 to)

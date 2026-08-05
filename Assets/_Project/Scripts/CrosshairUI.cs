@@ -21,12 +21,52 @@ namespace ZombieInfinite
         [SerializeField]
         private Color crosshairColor = Color.white;
 
+        [Header("Aim Down Sights")]
+        [SerializeField] private Color aimingColor = Color.red;
+        [SerializeField, Min(1f)] private float aimingScale = 1.45f;
+        [SerializeField, Min(0.1f)] private float aimingTransitionSpeed = 10f;
+
         private Canvas canvas;
         private RectTransform crosshairRoot;
+        private RawImage[] crosshairParts;
+        private TopDownCameraFollow cameraFollow;
+        private float aimBlend;
 
         private void Awake()
         {
             BuildCrosshair();
+            cameraFollow = FindFirstObjectByType<TopDownCameraFollow>();
+        }
+
+        private void Update()
+        {
+            if (crosshairRoot == null)
+            {
+                return;
+            }
+
+            if (cameraFollow == null)
+            {
+                cameraFollow = FindFirstObjectByType<TopDownCameraFollow>();
+            }
+
+            float target = cameraFollow != null && cameraFollow.IsAiming ? 1f : 0f;
+            float blend = 1f - Mathf.Exp(
+                -aimingTransitionSpeed * Time.unscaledDeltaTime);
+            aimBlend = Mathf.Lerp(aimBlend, target, blend);
+            float scale = Mathf.Lerp(1f, aimingScale, aimBlend);
+            crosshairRoot.localScale = Vector3.one * scale;
+
+            Color color = Color.Lerp(crosshairColor, aimingColor, aimBlend);
+            if (crosshairParts == null)
+            {
+                crosshairParts = crosshairRoot.GetComponentsInChildren<RawImage>(true);
+            }
+
+            foreach (RawImage part in crosshairParts)
+            {
+                part.color = color;
+            }
         }
 
         private void BuildCrosshair()
@@ -137,6 +177,8 @@ namespace ZombieInfinite
                     centerDotSize,
                     centerDotSize),
                 Vector2.zero);
+
+            crosshairParts = crosshairRoot.GetComponentsInChildren<RawImage>(true);
         }
 
         private void CreatePart(
@@ -186,6 +228,8 @@ namespace ZombieInfinite
             gap = Mathf.Max(0f, gap);
             centerDotSize =
                 Mathf.Max(1f, centerDotSize);
+            aimingScale = Mathf.Max(1f, aimingScale);
+            aimingTransitionSpeed = Mathf.Max(0.1f, aimingTransitionSpeed);
         }
     }
 }

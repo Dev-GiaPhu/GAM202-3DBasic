@@ -30,12 +30,14 @@ namespace ZombieInfinite
         private GUIStyle subtitleStyle;
         private GUIStyle buttonStyle;
         private Texture2D overlayTexture;
+        private ProceduralTerrainChunkManager chunkManager;
 
         public bool GameplayBlocked => state != MenuState.Playing;
 
         private void Awake()
         {
             stats = GetComponent<PlayerSurvivalStats>();
+            chunkManager = FindFirstObjectByType<ProceduralTerrainChunkManager>();
             if (restartImmediately)
             {
                 restartImmediately = false;
@@ -107,7 +109,14 @@ namespace ZombieInfinite
                 GUILayout.Label(gameTitle, titleStyle);
                 GUILayout.Label("SURVIVE THE ENDLESS HORDE", subtitleStyle);
                 GUILayout.Space(42f);
-                if (GUILayout.Button("START GAME", buttonStyle)) SetState(MenuState.Playing);
+                bool chunksReady = chunkManager == null || chunkManager.IsInitialLoadComplete;
+                bool previousEnabled = GUI.enabled;
+                GUI.enabled = chunksReady;
+                if (GUILayout.Button(chunksReady ? "START GAME" : "LOADING WORLD...", buttonStyle))
+                {
+                    SetState(MenuState.Playing);
+                }
+                GUI.enabled = previousEnabled;
                 GUILayout.Space(12f);
                 if (GUILayout.Button("QUIT", buttonStyle)) QuitGame();
             }

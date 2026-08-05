@@ -16,6 +16,10 @@ namespace ZombieInfinite
         [SerializeField] private int worldSeed = 2026;
         [SerializeField] private NavMeshSurface navMeshSurface;
 
+        [Header("Chunk Streaming")]
+        [Tooltip("Maximum number of new chunks instantiated or reused per frame.")]
+        [SerializeField, Min(1)] private int chunksLoadedPerFrame = 1;
+
         [Header("Seeded Tree & Rock Props")]
         [Tooltip("Hide Terrain-painted tree instances without modifying TerrainData assets.")]
         [SerializeField] private bool hideTerrainPaintedTrees = true;
@@ -32,7 +36,12 @@ namespace ZombieInfinite
         private Queue<GameObject>[] pools;
         private float chunkSize;
         private Vector2Int currentCenter = new(int.MinValue, int.MinValue);
+        private Vector2Int requestedCenter = new(int.MinValue, int.MinValue);
         private Coroutine rebuildRoutine;
+        private Coroutine streamRoutine;
+        private bool navMeshRebuildQueued;
+
+        public bool IsInitialLoadComplete { get; private set; }
 
         private readonly struct ActiveChunk
         {
@@ -72,7 +81,11 @@ namespace ZombieInfinite
 
         private void Update()
         {
-            RefreshChunks(force: false);
+            Vector2Int center = WorldToChunk(player.position);
+            if (center != requestedCenter)
+            {
+                BeginStreaming(center);
+            }
         }
 
         public int GetPrefabIndexForCoordinate(Vector2Int coordinate)
@@ -103,7 +116,7 @@ namespace ZombieInfinite
         [ContextMenu("Refresh Chunks Now")]
         public void RefreshNow()
         {
-            RefreshChunks(force: true);
+            BeginStreaming(WorldToChunk(player.position));
         }
 
         private bool ValidateConfiguration()
@@ -142,21 +155,55 @@ namespace ZombieInfinite
             return true;
         }
 
-        private void RefreshChunks(bool force)
+        private void BeginStreaming(Vector2Int center)
         {
-            Vector2Int center = WorldToChunk(player.position);
-            if (!force && center == currentCenter)
+            requestedCenter = center;
+            if (streamRoutine != null)
             {
-                return;
+                StopCoroutine(streamRoutine);
             }
 
-            currentCenter = center;
+            streamRoutine = StartCoroutine(StreamChunks(center));
+        }
+
+        private IEnumerator StreamChunks(Vector2Int center)
+        {
             var required = new HashSet<Vector2Int>();
             for (int z = -activeRadius; z <= activeRadius; z++)
             {
                 for (int x = -activeRadius; x <= activeRadius; x++)
                 {
                     required.Add(center + new Vector2Int(x, z));
+                }
+            }
+
+            var toAcquire = new List<Vector2Int>();
+            foreach (Vector2Int coordinate in required)
+            {
+                if (!activeChunks.ContainsKey(coordinate))
+                {
+                    toAcquire.Add(coordinate);
+                }
+            }
+
+            toAcquire.Sort((a, b) =>
+                ((a - center).sqrMagnitude).CompareTo((b - center).sqrMagnitude));
+
+            int loadedThisFrame = 0;
+            foreach (Vector2Int coordinate in toAcquire)
+            {
+                if (center != requestedCenter)
+                {
+                    streamRoutine = null;
+                    yield break;
+                }
+
+                activeChunks.Add(coordinate, AcquireChunk(coordinate));
+                loadedThisFrame++;
+                if (loadedThisFrame >= chunksLoadedPerFrame)
+                {
+                    loadedThisFrame = 0;
+                    yield return null;
                 }
             }
 
@@ -177,16 +224,10 @@ namespace ZombieInfinite
                 pools[released.PrefabIndex].Enqueue(released.Instance);
             }
 
-            foreach (Vector2Int coordinate in required)
-            {
-                if (!activeChunks.ContainsKey(coordinate))
-                {
-                    activeChunks.Add(coordinate, AcquireChunk(coordinate));
-                }
-            }
-
+            currentCenter = center;
             ConnectNeighbors();
             RequestNavMeshRebuild();
+            streamRoutine = null;
         }
 
         private ActiveChunk AcquireChunk(Vector2Int coordinate)
@@ -380,7 +421,8 @@ namespace ZombieInfinite
 
             if (rebuildRoutine != null)
             {
-                StopCoroutine(rebuildRoutine);
+                navMeshRebuildQueued = true;
+                return;
             }
 
             rebuildRoutine = StartCoroutine(RebuildNavMeshNextFrame());
@@ -388,11 +430,33 @@ namespace ZombieInfinite
 
         private IEnumerator RebuildNavMeshNextFrame()
         {
-            yield return null;
-            yield return new WaitForEndOfFrame();
-            navMeshSurface.RemoveData();
-            navMeshSurface.BuildNavMesh();
+            do
+            {
+                navMeshRebuildQueued = false;
+                yield return null;
+                if (navMeshSurface.navMeshData == null)
+                {
+                    navMeshSurface.BuildNavMesh();
+                }
+                else
+                {
+                    AsyncOperation operation = navMeshSurface.UpdateNavMesh(
+                        navMeshSurface.navMeshData);
+                    while (!operation.isDone)
+                    {
+                        yield return null;
+                    }
+                }
+            }
+            while (navMeshRebuildQueued);
+
+            IsInitialLoadComplete = true;
             rebuildRoutine = null;
+        }
+
+        private void OnValidate()
+        {
+            chunksLoadedPerFrame = Mathf.Max(1, chunksLoadedPerFrame);
         }
     }
 }

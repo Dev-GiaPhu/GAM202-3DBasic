@@ -459,30 +459,16 @@ namespace ZombieInfinite
                 return;
             }
 
-            // Điểm bắt đầu raycast thật sự:
-            // luôn chính xác tại FirePoint.
-            Vector3 shotOrigin = firePoint.position;
+            // The camera-center ray is authoritative. This keeps damage exactly
+            // on the crosshair and avoids near-ground muzzle/camera parallax.
+            Ray shotRay = gameplayCamera.ViewportPointToRay(
+                new Vector3(0.5f, 0.5f, 0f));
+            Vector3 tracerOrigin = firePoint.position;
+            Vector3 shotEnd = shotRay.origin + shotRay.direction * weaponRange;
 
-            Vector3 shotDirection =
-                currentAimPoint - shotOrigin;
-
-            if (shotDirection.sqrMagnitude < 0.001f)
-            {
-                shotDirection = firePoint.forward;
-            }
-            else
-            {
-                shotDirection.Normalize();
-            }
-
-            Vector3 shotEnd =
-                shotOrigin +
-                shotDirection * weaponRange;
-
-            // Raycast gây sát thương xuất phát từ FirePoint.
             if (TryGetClosestHit(
-                    shotOrigin,
-                    shotDirection,
+                    shotRay.origin,
+                    shotRay.direction,
                     weaponRange,
                     out RaycastHit weaponHit))
             {
@@ -501,10 +487,10 @@ namespace ZombieInfinite
                 }
             }
 
-            AlertNearbyZombies(shotOrigin);
+            AlertNearbyZombies(tracerOrigin);
 
             StartCoroutine(
-                DrawTracer(shotOrigin, shotEnd));
+                DrawTracer(tracerOrigin, shotEnd));
         }
 
         private void AlertNearbyZombies(Vector3 shotOrigin)

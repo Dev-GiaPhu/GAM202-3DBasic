@@ -34,6 +34,7 @@ namespace ZombieInfinite
         public float MedkitUseRemaining => medkitUseRemaining;
         public float MedkitUseDuration => medkitUseDuration;
         public bool CanSprint => stamina > 0.01f && !IsUsingMedkit;
+        public bool IsSprinting => sprinting;
         public event Action<float, float> Damaged;
 
         private void Awake()
