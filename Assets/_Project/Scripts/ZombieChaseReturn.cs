@@ -86,7 +86,10 @@ namespace ZombieInfinite
 
             if (GetComponent<ZombieWorldHealthBar>() == null)
             {
-                gameObject.AddComponent<ZombieWorldHealthBar>();
+                Debug.LogWarning(
+                    $"Prefab '{name}' chưa có ZombieWorldHealthBar. " +
+                    "Hãy gắn script này vào prefab và kéo Slider/Text trong Inspector.",
+                    this);
             }
         }
 
