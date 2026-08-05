@@ -221,13 +221,13 @@ namespace ZombieInfinite
 
         private void DropLoot()
         {
-            if (Random.value <= ammoDropChance)
+            if (UnityEngine.Random.value <= ammoDropChance)
             {
                 CreatePickup(SurvivalPickup.PickupType.Ammo, ammoPickupAmount,
                     transform.position + Vector3.up * 0.45f + transform.right * 0.35f);
             }
 
-            if (Random.value <= medkitDropChance)
+            if (UnityEngine.Random.value <= medkitDropChance)
             {
                 CreatePickup(SurvivalPickup.PickupType.Medkit, medkitPickupAmount,
                     transform.position + Vector3.up * 0.45f - transform.right * 0.35f);

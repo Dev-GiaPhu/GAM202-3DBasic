@@ -110,11 +110,11 @@ MonoBehaviour:
   detectionRadius: 15
   attackRange: 1.25
   homeTolerance: 0.25
-  maxHealth: 3
+  maxHealth: 100
   attackDamage: 5
   attackCooldown: 1.1
   createAutomaticHeadHitbox: 1
-  automaticHeadHitboxRadius: 0.16
+  automaticHeadHitboxRadius: 0.13
   deathDelay: 1.5
   ammoDropChance: 0.35
   ammoPickupAmount: 1
