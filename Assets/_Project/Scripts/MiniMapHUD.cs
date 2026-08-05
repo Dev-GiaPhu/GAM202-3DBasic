@@ -1,116 +1,250 @@
+using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace ZombieInfinite
 {
     [DisallowMultipleComponent]
     public sealed class MiniMapHUD : MonoBehaviour
     {
-        [Header("Layout")]
-        [SerializeField, Min(80f)] private float size = 180f;
-        [SerializeField, Min(0f)] private float margin = 20f;
+        [Header("World References")]
+        [Tooltip("Player được đặt ở tâm mini map. Để trống, script sẽ tự tìm TopDownPlayerController.")]
+        [SerializeField] private Transform player;
+
+        [Tooltip("Camera quyết định hướng phía trên của mini map. Nên gán Main Camera.")]
+        [SerializeField] private Camera directionCamera;
+
+        [Tooltip("Bật: hướng nhìn Camera luôn ở phía trên. Tắt: hướng trước của Player ở phía trên.")]
+        [SerializeField] private bool useCameraDirection = true;
+
+        [Header("Editable UI")]
+        [Tooltip("Vùng RectTransform chứa các icon. Có thể gắn RectMask2D để cắt icon ngoài khung.")]
+        [SerializeField] private RectTransform mapContent;
+
+        [Tooltip("Image icon Player đặt sẵn ở giữa map.")]
+        [SerializeField] private Image playerIcon;
+
+        [Tooltip("Image mẫu của Zombie. Nên để object mẫu inactive trong Hierarchy.")]
+        [SerializeField] private Image zombieIconTemplate;
+
+        [Header("Map Settings")]
         [SerializeField, Min(5f)] private float worldRadius = 30f;
 
-        [Header("Markers")]
-        [SerializeField, Min(2f)] private float playerMarkerSize = 10f;
-        [SerializeField, Min(2f)] private float zombieMarkerSize = 7f;
-        [SerializeField] private Color backgroundColor = new(0.03f, 0.05f, 0.05f, 0.78f);
-        [SerializeField] private Color borderColor = new(0.75f, 0.85f, 0.85f, 0.9f);
-        [SerializeField] private Color playerColor = new(0.15f, 0.85f, 1f, 1f);
-        [SerializeField] private Color zombieColor = new(0.95f, 0.12f, 0.08f, 1f);
+        [Tooltip("Khoảng đệm để icon không chạm sát mép khung.")]
+        [SerializeField, Min(0f)] private float edgePadding = 8f;
 
-        private Texture2D whiteTexture;
-        private GUIStyle titleStyle;
+        [Tooltip("Ẩn quái ở ngoài bán kính thay vì ghim icon ở mép.")]
+        [SerializeField] private bool hideOutsideRadius = true;
+
+        [Tooltip("Bao lâu quét lại danh sách Zombie. Vị trí icon vẫn cập nhật mỗi frame.")]
+        [SerializeField, Min(0.05f)] private float refreshInterval = 0.5f;
+
+        private readonly List<ZombieChaseReturn> zombies = new();
+        private readonly List<Image> zombieIcons = new();
+
         private GameMenuController gameMenu;
+        private float nextRefreshTime;
 
         private void Awake()
         {
-            whiteTexture = Texture2D.whiteTexture;
-            gameMenu = GetComponent<GameMenuController>();
+            ResolveReferences();
+
+            if (zombieIconTemplate != null &&
+                zombieIconTemplate.gameObject.scene.IsValid())
+            {
+                zombieIconTemplate.gameObject.SetActive(false);
+            }
         }
 
-        private void OnGUI()
+        private void OnEnable()
         {
-            if (gameMenu != null && gameMenu.GameplayBlocked)
+            nextRefreshTime = 0f;
+        }
+
+        private void LateUpdate()
+        {
+            ResolveReferences();
+
+            bool visible = gameMenu == null || !gameMenu.GameplayBlocked;
+            if (mapContent != null && mapContent.gameObject.activeSelf != visible)
+            {
+                mapContent.gameObject.SetActive(visible);
+            }
+
+            if (!visible || player == null || mapContent == null)
             {
                 return;
             }
 
-            Rect mapRect = new(Screen.width - size - margin, margin, size, size);
-            DrawRect(mapRect, backgroundColor);
-            DrawBorder(mapRect, 2f, borderColor);
-
-            Vector2 center = mapRect.center;
-            float mapRadius = size * 0.5f - 8f;
-            ZombieChaseReturn[] zombies = FindObjectsByType<ZombieChaseReturn>(
-                FindObjectsSortMode.None);
-
-            for (int i = 0; i < zombies.Length; i++)
+            if (Time.unscaledTime >= nextRefreshTime)
             {
-                ZombieChaseReturn zombie = zombies[i];
-                if (zombie == null || zombie.IsDead)
-                {
-                    continue;
-                }
-
-                Vector3 offset = zombie.transform.position - transform.position;
-                Vector2 planar = new(offset.x, offset.z);
-                if (planar.sqrMagnitude > worldRadius * worldRadius)
-                {
-                    continue;
-                }
-
-                // Mini map quay theo hướng nhìn của Player: phía trước luôn ở trên.
-                float angle = -transform.eulerAngles.y * Mathf.Deg2Rad;
-                Vector2 rotated = new(
-                    planar.x * Mathf.Cos(angle) - planar.y * Mathf.Sin(angle),
-                    planar.x * Mathf.Sin(angle) + planar.y * Mathf.Cos(angle));
-                Vector2 marker = center + new Vector2(rotated.x, -rotated.y) /
-                    worldRadius * mapRadius;
-                DrawMarker(marker, zombieMarkerSize, zombieColor);
+                RefreshZombieList();
+                nextRefreshTime = Time.unscaledTime + refreshInterval;
             }
 
-            DrawMarker(center, playerMarkerSize, playerColor);
+            UpdateMarkers();
+        }
 
-            titleStyle ??= new GUIStyle(GUI.skin.label)
+        private void ResolveReferences()
+        {
+            if (player == null)
             {
-                alignment = TextAnchor.MiddleCenter,
-                fontSize = 13,
-                fontStyle = FontStyle.Bold,
-                normal = { textColor = Color.white }
-            };
-            GUI.Label(new Rect(mapRect.x, mapRect.yMax + 2f, mapRect.width, 20f),
-                $"MINI MAP  {worldRadius:0}m", titleStyle);
+                TopDownPlayerController controller =
+                    FindFirstObjectByType<TopDownPlayerController>();
+
+                if (controller != null)
+                {
+                    player = controller.transform;
+                }
+            }
+
+            if (directionCamera == null)
+            {
+                directionCamera = Camera.main;
+            }
+
+            if (player != null && gameMenu == null)
+            {
+                gameMenu = player.GetComponent<GameMenuController>();
+            }
         }
 
-        private void DrawMarker(Vector2 center, float markerSize, Color color)
+        private void RefreshZombieList()
         {
-            DrawRect(new Rect(center.x - markerSize * 0.5f,
-                center.y - markerSize * 0.5f, markerSize, markerSize), color);
+            ZombieChaseReturn[] found = FindObjectsByType<ZombieChaseReturn>(
+                FindObjectsSortMode.None);
+
+            zombies.Clear();
+            for (int i = 0; i < found.Length; i++)
+            {
+                if (found[i] != null)
+                {
+                    zombies.Add(found[i]);
+                }
+            }
+
+            EnsureIconCount(zombies.Count);
         }
 
-        private void DrawBorder(Rect rect, float thickness, Color color)
+        private void EnsureIconCount(int requiredCount)
         {
-            DrawRect(new Rect(rect.x, rect.y, rect.width, thickness), color);
-            DrawRect(new Rect(rect.x, rect.yMax - thickness, rect.width, thickness), color);
-            DrawRect(new Rect(rect.x, rect.y, thickness, rect.height), color);
-            DrawRect(new Rect(rect.xMax - thickness, rect.y, thickness, rect.height), color);
+            if (zombieIconTemplate == null || mapContent == null)
+            {
+                return;
+            }
+
+            while (zombieIcons.Count < requiredCount)
+            {
+                Image icon = Instantiate(zombieIconTemplate, mapContent);
+                icon.name = "Zombie Icon " + (zombieIcons.Count + 1);
+                icon.gameObject.SetActive(false);
+                zombieIcons.Add(icon);
+            }
+
+            for (int i = requiredCount; i < zombieIcons.Count; i++)
+            {
+                zombieIcons[i].gameObject.SetActive(false);
+            }
         }
 
-        private void DrawRect(Rect rect, Color color)
+        private void UpdateMarkers()
         {
-            Color previous = GUI.color;
-            GUI.color = color;
-            GUI.DrawTexture(rect, whiteTexture);
-            GUI.color = previous;
+            if (playerIcon != null)
+            {
+                RectTransform playerRect = playerIcon.rectTransform;
+                playerRect.anchoredPosition = Vector2.zero;
+                playerRect.localRotation = Quaternion.identity;
+                playerIcon.gameObject.SetActive(true);
+            }
+
+            Vector3 headingForward = GetHeadingForward();
+            Vector3 headingRight = Vector3.Cross(Vector3.up, headingForward).normalized;
+
+            Rect rect = mapContent.rect;
+            float usableHalfWidth = Mathf.Max(0f, rect.width * 0.5f - edgePadding);
+            float usableHalfHeight = Mathf.Max(0f, rect.height * 0.5f - edgePadding);
+            float radiusSquared = worldRadius * worldRadius;
+
+            for (int i = 0; i < zombieIcons.Count; i++)
+            {
+                if (i >= zombies.Count)
+                {
+                    zombieIcons[i].gameObject.SetActive(false);
+                    continue;
+                }
+
+                ZombieChaseReturn zombie = zombies[i];
+                Image icon = zombieIcons[i];
+
+                if (zombie == null || zombie.IsDead)
+                {
+                    icon.gameObject.SetActive(false);
+                    continue;
+                }
+
+                Vector3 worldOffset = zombie.transform.position - player.position;
+                worldOffset.y = 0f;
+
+                bool outside = worldOffset.sqrMagnitude > radiusSquared;
+                if (outside && hideOutsideRadius)
+                {
+                    icon.gameObject.SetActive(false);
+                    continue;
+                }
+
+                Vector2 localOffset = new(
+                    Vector3.Dot(worldOffset, headingRight),
+                    Vector3.Dot(worldOffset, headingForward));
+
+                if (outside)
+                {
+                    localOffset = localOffset.normalized * worldRadius;
+                }
+
+                Vector2 uiPosition = new(
+                    localOffset.x / worldRadius * usableHalfWidth,
+                    localOffset.y / worldRadius * usableHalfHeight);
+
+                icon.rectTransform.anchoredPosition = uiPosition;
+                icon.rectTransform.localRotation = Quaternion.identity;
+                icon.gameObject.SetActive(true);
+            }
+        }
+
+        private Vector3 GetHeadingForward()
+        {
+            Vector3 forward = player != null ? player.forward : Vector3.forward;
+
+            if (useCameraDirection && directionCamera != null)
+            {
+                forward = directionCamera.transform.forward;
+            }
+
+            forward.y = 0f;
+            if (forward.sqrMagnitude < 0.001f)
+            {
+                forward = Vector3.forward;
+            }
+
+            return forward.normalized;
+        }
+
+        private void OnDisable()
+        {
+            for (int i = 0; i < zombieIcons.Count; i++)
+            {
+                if (zombieIcons[i] != null)
+                {
+                    zombieIcons[i].gameObject.SetActive(false);
+                }
+            }
         }
 
         private void OnValidate()
         {
-            size = Mathf.Max(80f, size);
-            margin = Mathf.Max(0f, margin);
             worldRadius = Mathf.Max(5f, worldRadius);
-            playerMarkerSize = Mathf.Max(2f, playerMarkerSize);
-            zombieMarkerSize = Mathf.Max(2f, zombieMarkerSize);
+            edgePadding = Mathf.Max(0f, edgePadding);
+            refreshInterval = Mathf.Max(0.05f, refreshInterval);
         }
     }
 }
