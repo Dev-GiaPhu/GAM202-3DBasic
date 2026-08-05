@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
 
 namespace ZombieInfinite
 {
@@ -7,7 +8,7 @@ namespace ZombieInfinite
     {
         [Header("Canvas UI")]
         [Tooltip("Kéo UI Text hiển thị thời gian từ Canvas vào đây.")]
-        [SerializeField] private Text timeText;
+        [SerializeField] private TMP_Text timeText;
 
         private PlayerSurvivalStats stats;
         private WeaponAmmoInventory ammo;
