@@ -128,6 +128,11 @@ namespace ZombieInfinite
                 gameObject.AddComponent<SurvivalHUD>();
             }
 
+            if (GetComponent<MiniMapHUD>() == null)
+            {
+                gameObject.AddComponent<MiniMapHUD>();
+            }
+
             if (GetComponent<PlayerDamageFeedback>() == null)
             {
                 gameObject.AddComponent<PlayerDamageFeedback>();
