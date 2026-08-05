@@ -1,9 +1,14 @@
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace ZombieInfinite
 {
     public sealed class SurvivalHUD : MonoBehaviour
     {
+        [Header("Canvas UI")]
+        [Tooltip("Kéo UI Text hiển thị thời gian từ Canvas vào đây.")]
+        [SerializeField] private Text timeText;
+
         private PlayerSurvivalStats stats;
         private WeaponAmmoInventory ammo;
         private GameMenuController gameMenu;
@@ -14,6 +19,32 @@ namespace ZombieInfinite
             stats = GetComponent<PlayerSurvivalStats>();
             ammo = GetComponent<WeaponAmmoInventory>();
             gameMenu = GetComponent<GameMenuController>();
+        }
+
+        private void Update()
+        {
+            UpdateTimeText();
+        }
+
+        private void UpdateTimeText()
+        {
+            if (timeText == null)
+            {
+                return;
+            }
+
+            bool gameplayBlocked = gameMenu != null && gameMenu.GameplayBlocked;
+            timeText.gameObject.SetActive(!gameplayBlocked);
+
+            if (gameplayBlocked)
+            {
+                return;
+            }
+
+            int totalSeconds = Mathf.FloorToInt(Time.timeSinceLevelLoad);
+            int minutes = totalSeconds / 60;
+            int seconds = totalSeconds % 60;
+            timeText.text = $"TIME {minutes:00}:{seconds:00}";
         }
 
         private void OnGUI()
@@ -42,12 +73,6 @@ namespace ZombieInfinite
                 $"AMMO {ammo.RoundsInMagazine}/{ammo.MagazineSize}  |  MAGS {ammo.ReserveMagazines}", labelStyle);
             GUI.Label(new Rect(x, y + 84f, 360f, 24f),
                 $"MEDKITS {stats.MedkitCount}  |  F: USE  |  R: RELOAD", labelStyle);
-
-            int totalSeconds = Mathf.FloorToInt(Time.timeSinceLevelLoad);
-            int minutes = totalSeconds / 60;
-            int seconds = totalSeconds % 60;
-            GUI.Label(new Rect(Screen.width - 170f, 20f, 150f, 26f),
-                $"TIME {minutes:00}:{seconds:00}", labelStyle);
 
             if (stats.IsUsingMedkit)
             {
