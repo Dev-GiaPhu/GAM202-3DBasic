@@ -20,6 +20,10 @@ namespace ZombieInfinite
         [Tooltip("Maximum number of new chunks instantiated or reused per frame.")]
         [SerializeField, Min(1)] private int chunksLoadedPerFrame = 1;
 
+        [Header("Mini Map Layer")]
+        [Tooltip("Layer used only by the Terrain root so MiniMapCamera can render ground without Player, Zombies, trees or rocks.")]
+        [SerializeField, Range(0, 31)] private int minimapTerrainLayer = 6;
+
         [Header("Seeded Tree & Rock Props")]
         [Tooltip("Hide Terrain-painted tree instances without modifying TerrainData assets.")]
         [SerializeField] private bool hideTerrainPaintedTrees = true;
@@ -242,6 +246,11 @@ namespace ZombieInfinite
             instance.transform.SetParent(transform, false);
             instance.transform.position = new Vector3(coordinate.x * chunkSize, 0f, coordinate.y * chunkSize);
             instance.transform.rotation = Quaternion.identity;
+
+            // Only the Terrain root uses MiniMapTerrain. Runtime tree/rock props keep
+            // their normal prefab layers, so MiniMapCamera can cull them completely.
+            instance.layer = minimapTerrainLayer;
+
             PrepareRuntimeTerrain(instance);
             RebuildSeededProps(instance, coordinate);
             instance.SetActive(true);
@@ -457,6 +466,7 @@ namespace ZombieInfinite
         private void OnValidate()
         {
             chunksLoadedPerFrame = Mathf.Max(1, chunksLoadedPerFrame);
+            minimapTerrainLayer = Mathf.Clamp(minimapTerrainLayer, 0, 31);
         }
     }
 }
