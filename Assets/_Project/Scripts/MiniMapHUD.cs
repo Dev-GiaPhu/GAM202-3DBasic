@@ -1,6 +1,11 @@
 using UnityEngine;
 using UnityEngine.UI;
 
+#if UNITY_EDITOR
+using UnityEditor;
+using UnityEditor.SceneManagement;
+#endif
+
 namespace ZombieInfinite
 {
     [DisallowMultipleComponent]
@@ -8,6 +13,7 @@ namespace ZombieInfinite
     {
         private const string TerrainLayerName = "MiniMapTerrain";
         private const string VisibleLayerName = "MiniMapVisible";
+        private const string LegacyZombieIconPrefix = "Zombie-Icon-";
 
         [Header("Scene References")]
         [Tooltip("Player được gán trực tiếp trong scene.")]
@@ -35,6 +41,10 @@ namespace ZombieInfinite
 
         private readonly Vector3[] viewportCorners = new Vector3[4];
         private GameMenuController gameMenu;
+
+#if UNITY_EDITOR
+        private bool legacyCleanupScheduled;
+#endif
 
         private void Awake()
         {
@@ -119,14 +129,25 @@ namespace ZombieInfinite
 
             // Minimap chỉ render mặt đất và những object/marker mà bạn chủ động
             // đặt vào MiniMapVisible. Cây, đá, model Player/Zombie vẫn ở layer thường.
-            miniMapCamera.cullingMask = terrainMask | visibleMask;
+            if (miniMapCamera != null)
+            {
+                miniMapCamera.cullingMask = terrainMask | visibleMask;
+            }
 
             // Marker MiniMapVisible chỉ dành cho minimap, không xuất hiện ở camera gameplay.
-            directionCamera.cullingMask &= ~visibleMask;
+            if (directionCamera != null)
+            {
+                directionCamera.cullingMask &= ~visibleMask;
+            }
         }
 
         private void ConfigureMiniMapCamera()
         {
+            if (miniMapCamera == null)
+            {
+                return;
+            }
+
             miniMapCamera.orthographic = true;
             miniMapCamera.orthographicSize = worldRadius;
         }
@@ -214,12 +235,57 @@ namespace ZombieInfinite
         {
             worldRadius = Mathf.Max(5f, worldRadius);
             cameraHeight = Mathf.Max(1f, cameraHeight);
+            ConfigureCameraLayers();
+            ConfigureMiniMapCamera();
 
-            if (miniMapCamera != null)
+#if UNITY_EDITOR
+            ScheduleLegacyIconCleanup();
+#endif
+        }
+
+#if UNITY_EDITOR
+        /// <summary>
+        /// One-time editor migration from the old fixed zombie UI icon pool.
+        /// This never runs in a player build and never creates runtime objects.
+        /// </summary>
+        private void ScheduleLegacyIconCleanup()
+        {
+            if (Application.isPlaying || legacyCleanupScheduled || mapContent == null)
             {
-                ConfigureCameraLayers();
-                ConfigureMiniMapCamera();
+                return;
+            }
+
+            legacyCleanupScheduled = true;
+            EditorApplication.delayCall += CleanupLegacyZombieIcons;
+        }
+
+        private void CleanupLegacyZombieIcons()
+        {
+            legacyCleanupScheduled = false;
+
+            if (this == null || Application.isPlaying || mapContent == null)
+            {
+                return;
+            }
+
+            bool changed = false;
+            for (int i = mapContent.childCount - 1; i >= 0; i--)
+            {
+                Transform child = mapContent.GetChild(i);
+                if (!child.name.StartsWith(LegacyZombieIconPrefix))
+                {
+                    continue;
+                }
+
+                DestroyImmediate(child.gameObject);
+                changed = true;
+            }
+
+            if (changed && gameObject.scene.IsValid())
+            {
+                EditorSceneManager.MarkSceneDirty(gameObject.scene);
             }
         }
+#endif
     }
 }
