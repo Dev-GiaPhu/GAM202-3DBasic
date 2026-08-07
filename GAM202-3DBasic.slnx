@@ -1,8 +1,13 @@
 ﻿<Solution>
+<<<<<<< HEAD
   <Project Path="VHierarchy.csproj" />
   <Project Path="Assembly-CSharp.csproj" />
   <Project Path="Rodin.csproj" />
   <Project Path="Abiogenesis3d.Shared.csproj" />
   <Project Path="Assembly-CSharp-Editor.csproj" />
   <Project Path="Campfire.csproj" />
+=======
+  <Project Path="Assembly-CSharp.csproj" />
+  <Project Path="Assembly-CSharp-Editor.csproj" />
+>>>>>>> ChatGPT-Code
 </Solution>
