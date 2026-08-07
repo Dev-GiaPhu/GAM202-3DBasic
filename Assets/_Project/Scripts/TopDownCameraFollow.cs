@@ -59,10 +59,9 @@ namespace ZombieInfinite
         [SerializeField, Min(0.1f)] private float aimZoomSpeed = 10f;
 
         [Header("Sprint Camera Effect")]
-        [SerializeField, Min(0f)] private float sprintFovBonus = 9f;
-        [SerializeField, Min(0f)] private float sprintEffectSpeed = 7f;
-        [SerializeField, Min(0f)] private float sprintBobAmplitude = 0.035f;
-        [SerializeField, Min(0f)] private float sprintBobFrequency = 12f;
+        [Tooltip("Chỉ tăng FOV nhẹ khi sprint. Không lắc hoặc bob camera.")]
+        [SerializeField, Range(0f, 3f)] private float sprintFovBonus = 3f;
+        [SerializeField, Min(0.1f)] private float sprintEffectSpeed = 6f;
 
         private Transform cameraRoot;
         private Transform pitchPivot;
@@ -81,7 +80,6 @@ namespace ZombieInfinite
         private float firstPersonBaseFov;
         private float thirdPersonBaseFov;
         private float sprintEffectWeight;
-        private float sprintBobTime;
 
         public bool IsFirstPerson { get; private set; }
         public bool IsAiming { get; private set; }
@@ -255,6 +253,7 @@ namespace ZombieInfinite
 
             firstPersonBaseFov = firstPersonCamera.Lens.FieldOfView;
             thirdPersonBaseFov = thirdPersonCamera.Lens.FieldOfView;
+            sprintFovBonus = Mathf.Clamp(sprintFovBonus, 0f, 3f);
 
             AttachCamera(firstPersonCamera, firstPersonAnchor);
             AttachCamera(thirdPersonCamera, thirdPersonAnchor);
@@ -317,10 +316,8 @@ namespace ZombieInfinite
                     interpolation);
             }
 
-            UpdateSprintBob();
-
+            // Sprint không thay đổi vị trí camera. Chỉ FOV được thay đổi nhẹ.
             UpdateDamageShake();
-
             UpdateViewRotation();
         }
 
@@ -330,20 +327,26 @@ namespace ZombieInfinite
                 survivalStats != null &&
                 survivalStats.IsSprinting &&
                 !IsAiming;
+
             float sprintTarget = sprinting ? 1f : 0f;
             float sprintBlend = 1f - Mathf.Exp(
                 -sprintEffectSpeed * Time.unscaledDeltaTime);
+
             sprintEffectWeight = Mathf.Lerp(
                 sprintEffectWeight,
                 sprintTarget,
                 sprintBlend);
 
+            float sprintBonus = Mathf.Clamp(sprintFovBonus, 0f, 3f) * sprintEffectWeight;
+
             float firstTarget = IsAiming
                 ? firstPersonBaseFov * aimFovMultiplier
-                : firstPersonBaseFov + sprintFovBonus * sprintEffectWeight;
+                : firstPersonBaseFov + sprintBonus;
+
             float thirdTarget = IsAiming
                 ? thirdPersonBaseFov * aimFovMultiplier
-                : thirdPersonBaseFov + sprintFovBonus * sprintEffectWeight;
+                : thirdPersonBaseFov + sprintBonus;
+
             float zoomBlend = 1f - Mathf.Exp(
                 -aimZoomSpeed * Time.unscaledDeltaTime);
 
@@ -351,25 +354,11 @@ namespace ZombieInfinite
                 firstPersonCamera.Lens.FieldOfView,
                 firstTarget,
                 zoomBlend);
+
             thirdPersonCamera.Lens.FieldOfView = Mathf.Lerp(
                 thirdPersonCamera.Lens.FieldOfView,
                 thirdTarget,
                 zoomBlend);
-        }
-
-        private void UpdateSprintBob()
-        {
-            if (sprintEffectWeight <= 0.001f || sprintBobAmplitude <= 0f)
-            {
-                return;
-            }
-
-            sprintBobTime += Time.deltaTime * sprintBobFrequency;
-            float vertical = Mathf.Sin(sprintBobTime * 2f) * sprintBobAmplitude;
-            float horizontal = Mathf.Cos(sprintBobTime) * sprintBobAmplitude * 0.55f;
-            cameraRoot.position +=
-                cameraRoot.up * (vertical * sprintEffectWeight) +
-                cameraRoot.right * (horizontal * sprintEffectWeight);
         }
 
         private void UpdateDamageShake()
@@ -454,10 +443,8 @@ namespace ZombieInfinite
             headFollowSpeed = Mathf.Max(0f, headFollowSpeed);
             aimFovMultiplier = Mathf.Clamp(aimFovMultiplier, 0.2f, 1f);
             aimZoomSpeed = Mathf.Max(0.1f, aimZoomSpeed);
-            sprintFovBonus = Mathf.Max(0f, sprintFovBonus);
-            sprintEffectSpeed = Mathf.Max(0f, sprintEffectSpeed);
-            sprintBobAmplitude = Mathf.Max(0f, sprintBobAmplitude);
-            sprintBobFrequency = Mathf.Max(0f, sprintBobFrequency);
+            sprintFovBonus = Mathf.Clamp(sprintFovBonus, 0f, 3f);
+            sprintEffectSpeed = Mathf.Max(0.1f, sprintEffectSpeed);
             leanRollMultiplier = Mathf.Clamp(
                 leanRollMultiplier,
                 0f,
