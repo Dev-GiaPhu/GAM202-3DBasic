@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
 
 namespace ZombieInfinite
 {
@@ -18,7 +19,7 @@ namespace ZombieInfinite
         [SerializeField] private Slider healthSlider;
 
         [Tooltip("Text hiển thị dạng máu hiện tại / máu tối đa.")]
-        [SerializeField] private Text healthText;
+        [SerializeField] private TMP_Text healthText;
 
         [Header("Display")]
         [Tooltip("Luôn hiện thanh máu khi zombie còn sống.")]
@@ -169,7 +170,7 @@ namespace ZombieInfinite
 
             if (healthText == null)
             {
-                healthText = searchRoot.GetComponentInChildren<Text>(true);
+                healthText = searchRoot.GetComponentInChildren<TMP_Text>(true);
             }
 
             if (healthSlider == null || healthText == null)
