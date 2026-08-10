@@ -180,8 +180,7 @@ namespace ZombieInfinite
             {
                 msaaSamples = 1,
                 useMipMap = false,
-                autoGenerateMips = false,
-                sRGB = true
+                autoGenerateMips = false
             };
 
             mapRenderTexture = new RenderTexture(descriptor)
