@@ -13,6 +13,7 @@ namespace ZombieInfinite
     {
         private const string TerrainLayerName = "MiniMapTerrain";
         private const string VisibleLayerName = "MiniMapVisible";
+        private const string PlayerMarkerName = "MiniMap Player Icon";
         private const string LegacyZombieIconPrefix = "Zombie-Icon-";
 
         [Header("Scene References")]
@@ -22,28 +23,31 @@ namespace ZombieInfinite
         [Tooltip("Camera gameplay dùng để xác định hướng phía trên của minimap.")]
         [SerializeField] private Camera directionCamera;
 
-        [Tooltip("Camera minimap đặt sẵn trong scene. Script không tạo Camera runtime.")]
+        [Tooltip("Camera minimap đặt sẵn trong scene. Camera này chỉ render MiniMapTerrain + MiniMapVisible.")]
         [SerializeField] private Camera miniMapCamera;
 
         [Tooltip("Bật: hướng nhìn Camera gameplay luôn ở phía trên minimap. Tắt: hướng trước Player ở phía trên.")]
         [SerializeField] private bool useCameraDirection = true;
 
         [Header("Scene-authored UI")]
-        [Tooltip("RectTransform vùng hiển thị map. Camera viewport sẽ bám đúng vùng này.")]
+        [Tooltip("RectTransform vùng hiển thị map. Object này được chuyển sang RawImage ở Edit Mode để nhận RenderTexture.")]
         [SerializeField] private RectTransform mapContent;
 
-        [Tooltip("Icon Player đặt sẵn trong scene.")]
+        [Tooltip("Icon UI Player cũ. Chỉ dùng làm nguồn Sprite khi tự tạo world marker trong Edit Mode rồi sẽ bị tắt.")]
         [SerializeField] private Image playerIcon;
 
         [Header("Map Settings")]
         [SerializeField, Min(5f)] private float worldRadius = 30f;
         [SerializeField, Min(1f)] private float cameraHeight = 50f;
+        [SerializeField, Range(128, 1024)] private int renderTextureResolution = 512;
+        [SerializeField] private Color emptyMapColor = new(0.04f, 0.05f, 0.04f, 1f);
 
-        private readonly Vector3[] viewportCorners = new Vector3[4];
         private GameMenuController gameMenu;
+        private RawImage mapDisplay;
+        private RenderTexture mapRenderTexture;
 
 #if UNITY_EDITOR
-        private bool legacyCleanupScheduled;
+        private bool editorSetupScheduled;
 #endif
 
         private void Awake()
@@ -55,8 +59,25 @@ namespace ZombieInfinite
             }
 
             gameMenu = player.GetComponent<GameMenuController>();
+            mapDisplay = mapContent.GetComponent<RawImage>();
+
+            if (mapDisplay == null)
+            {
+                Debug.LogError(
+                    "MapContent cần RawImage. Hãy mở ZombieInfiniteDemo sau khi Unity compile và Save Scene một lần.",
+                    this);
+                enabled = false;
+                return;
+            }
+
+            if (playerIcon != null)
+            {
+                playerIcon.enabled = false;
+            }
+
             ConfigureCameraLayers();
             ConfigureMiniMapCamera();
+            CreateRenderTexture();
         }
 
         private void LateUpdate()
@@ -68,10 +89,7 @@ namespace ZombieInfinite
                 return;
             }
 
-            Vector3 headingForward = GetHeadingForward();
-            UpdateCamera(headingForward);
-            UpdateCameraViewport();
-            UpdatePlayerIcon();
+            UpdateCamera(GetHeadingForward());
         }
 
         private bool ValidateSceneReferences()
@@ -102,12 +120,6 @@ namespace ZombieInfinite
                 valid = false;
             }
 
-            if (playerIcon == null)
-            {
-                Debug.LogError("MiniMapHUD requires Player icon assigned in the scene.", this);
-                valid = false;
-            }
-
             return valid;
         }
 
@@ -127,14 +139,14 @@ namespace ZombieInfinite
             int terrainMask = 1 << terrainLayer;
             int visibleMask = 1 << visibleLayer;
 
-            // Minimap chỉ render mặt đất và những object/marker mà bạn chủ động
-            // đặt vào MiniMapVisible. Cây, đá, model Player/Zombie vẫn ở layer thường.
+            // Chỉ render Terrain và các marker/icon minimap.
+            // Model Player/Zombie, cây, đá, súng, UI gameplay... đều bị cull.
             if (miniMapCamera != null)
             {
                 miniMapCamera.cullingMask = terrainMask | visibleMask;
             }
 
-            // Marker MiniMapVisible chỉ dành cho minimap, không xuất hiện ở camera gameplay.
+            // MiniMapVisible là layer chỉ dành cho marker minimap.
             if (directionCamera != null)
             {
                 directionCamera.cullingMask &= ~visibleMask;
@@ -150,6 +162,67 @@ namespace ZombieInfinite
 
             miniMapCamera.orthographic = true;
             miniMapCamera.orthographicSize = worldRadius;
+            miniMapCamera.rect = new Rect(0f, 0f, 1f, 1f);
+            miniMapCamera.clearFlags = CameraClearFlags.SolidColor;
+            miniMapCamera.backgroundColor = emptyMapColor;
+        }
+
+        private void CreateRenderTexture()
+        {
+            ReleaseRenderTexture();
+
+            int resolution = Mathf.Clamp(renderTextureResolution, 128, 1024);
+            var descriptor = new RenderTextureDescriptor(
+                resolution,
+                resolution,
+                RenderTextureFormat.ARGB32,
+                16)
+            {
+                msaaSamples = 1,
+                useMipMap = false,
+                autoGenerateMips = false,
+                sRGB = true
+            };
+
+            mapRenderTexture = new RenderTexture(descriptor)
+            {
+                name = "MiniMap RenderTexture",
+                filterMode = FilterMode.Bilinear,
+                wrapMode = TextureWrapMode.Clamp,
+                hideFlags = HideFlags.DontSave
+            };
+            mapRenderTexture.Create();
+
+            miniMapCamera.targetTexture = mapRenderTexture;
+            mapDisplay.texture = mapRenderTexture;
+            mapDisplay.color = Color.white;
+            mapDisplay.raycastTarget = false;
+        }
+
+        private void ReleaseRenderTexture()
+        {
+            if (miniMapCamera != null && miniMapCamera.targetTexture == mapRenderTexture)
+            {
+                miniMapCamera.targetTexture = null;
+            }
+
+            if (mapDisplay != null && mapDisplay.texture == mapRenderTexture)
+            {
+                mapDisplay.texture = null;
+            }
+
+            if (mapRenderTexture == null)
+            {
+                return;
+            }
+
+            if (mapRenderTexture.IsCreated())
+            {
+                mapRenderTexture.Release();
+            }
+
+            Destroy(mapRenderTexture);
+            mapRenderTexture = null;
         }
 
         private void SetVisible(bool visible)
@@ -175,41 +248,6 @@ namespace ZombieInfinite
             miniMapCamera.orthographicSize = worldRadius;
         }
 
-        private void UpdateCameraViewport()
-        {
-            if (Screen.width <= 0 || Screen.height <= 0)
-            {
-                return;
-            }
-
-            mapContent.GetWorldCorners(viewportCorners);
-            Vector2 bottomLeft = RectTransformUtility.WorldToScreenPoint(null, viewportCorners[0]);
-            Vector2 topRight = RectTransformUtility.WorldToScreenPoint(null, viewportCorners[2]);
-
-            float x = Mathf.Clamp01(bottomLeft.x / Screen.width);
-            float y = Mathf.Clamp01(bottomLeft.y / Screen.height);
-            float right = Mathf.Clamp01(topRight.x / Screen.width);
-            float top = Mathf.Clamp01(topRight.y / Screen.height);
-
-            miniMapCamera.rect = new Rect(
-                x,
-                y,
-                Mathf.Max(0f, right - x),
-                Mathf.Max(0f, top - y));
-        }
-
-        private void UpdatePlayerIcon()
-        {
-            RectTransform playerRect = playerIcon.rectTransform;
-            playerRect.anchoredPosition = Vector2.zero;
-            playerRect.localRotation = Quaternion.identity;
-
-            if (!playerIcon.gameObject.activeSelf)
-            {
-                playerIcon.gameObject.SetActive(true);
-            }
-        }
-
         private Vector3 GetHeadingForward()
         {
             Vector3 forward = useCameraDirection ? directionCamera.transform.forward : player.forward;
@@ -231,37 +269,39 @@ namespace ZombieInfinite
             }
         }
 
+        private void OnDestroy()
+        {
+            ReleaseRenderTexture();
+        }
+
         private void OnValidate()
         {
             worldRadius = Mathf.Max(5f, worldRadius);
             cameraHeight = Mathf.Max(1f, cameraHeight);
+            renderTextureResolution = Mathf.Clamp(renderTextureResolution, 128, 1024);
             ConfigureCameraLayers();
             ConfigureMiniMapCamera();
 
 #if UNITY_EDITOR
-            ScheduleLegacyIconCleanup();
+            ScheduleEditorSetup();
 #endif
         }
 
 #if UNITY_EDITOR
-        /// <summary>
-        /// One-time editor migration from the old fixed zombie UI icon pool.
-        /// This never runs in a player build and never creates runtime objects.
-        /// </summary>
-        private void ScheduleLegacyIconCleanup()
+        private void ScheduleEditorSetup()
         {
-            if (Application.isPlaying || legacyCleanupScheduled || mapContent == null)
+            if (Application.isPlaying || editorSetupScheduled || mapContent == null)
             {
                 return;
             }
 
-            legacyCleanupScheduled = true;
-            EditorApplication.delayCall += CleanupLegacyZombieIcons;
+            editorSetupScheduled = true;
+            EditorApplication.delayCall += ApplyEditorSetup;
         }
 
-        private void CleanupLegacyZombieIcons()
+        private void ApplyEditorSetup()
         {
-            legacyCleanupScheduled = false;
+            editorSetupScheduled = false;
 
             if (this == null || Application.isPlaying || mapContent == null)
             {
@@ -269,6 +309,93 @@ namespace ZombieInfinite
             }
 
             bool changed = false;
+            EnsureRawImage(ref changed);
+            EnsurePlayerWorldMarker(ref changed);
+            CleanupLegacyZombieIcons(ref changed);
+
+            if (changed && gameObject.scene.IsValid())
+            {
+                EditorSceneManager.MarkSceneDirty(gameObject.scene);
+            }
+        }
+
+        private void EnsureRawImage(ref bool changed)
+        {
+            RawImage rawImage = mapContent.GetComponent<RawImage>();
+            if (rawImage == null)
+            {
+                rawImage = Undo.AddComponent<RawImage>(mapContent.gameObject);
+                rawImage.raycastTarget = false;
+                rawImage.color = Color.white;
+                changed = true;
+            }
+
+            Image oldMapImage = mapContent.GetComponent<Image>();
+            if (oldMapImage != null && oldMapImage.enabled)
+            {
+                Undo.RecordObject(oldMapImage, "Disable old minimap Image");
+                oldMapImage.enabled = false;
+                changed = true;
+            }
+        }
+
+        private void EnsurePlayerWorldMarker(ref bool changed)
+        {
+            if (player == null)
+            {
+                return;
+            }
+
+            int visibleLayer = LayerMask.NameToLayer(VisibleLayerName);
+            if (visibleLayer < 0)
+            {
+                return;
+            }
+
+            Transform marker = player.Find(PlayerMarkerName);
+            if (marker == null)
+            {
+                if (playerIcon == null || playerIcon.sprite == null)
+                {
+                    Debug.LogWarning(
+                        "Không thể tạo MiniMap Player Icon vì Player Icon UI cũ chưa có Sprite.",
+                        this);
+                    return;
+                }
+
+                var markerObject = new GameObject(PlayerMarkerName);
+                Undo.RegisterCreatedObjectUndo(markerObject, "Create minimap player marker");
+                marker = markerObject.transform;
+                marker.SetParent(player, false);
+                marker.localPosition = new Vector3(0f, 3f, 0f);
+                marker.localRotation = Quaternion.Euler(90f, 0f, 0f);
+                marker.localScale = Vector3.one * 0.12f;
+                markerObject.layer = visibleLayer;
+
+                SpriteRenderer renderer = Undo.AddComponent<SpriteRenderer>(markerObject);
+                renderer.sprite = playerIcon.sprite;
+                renderer.sortingOrder = 101;
+                renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                renderer.receiveShadows = false;
+                changed = true;
+            }
+            else if (marker.gameObject.layer != visibleLayer)
+            {
+                Undo.RecordObject(marker.gameObject, "Set minimap player marker layer");
+                marker.gameObject.layer = visibleLayer;
+                changed = true;
+            }
+
+            if (playerIcon != null && playerIcon.enabled)
+            {
+                Undo.RecordObject(playerIcon, "Disable old minimap player UI icon");
+                playerIcon.enabled = false;
+                changed = true;
+            }
+        }
+
+        private void CleanupLegacyZombieIcons(ref bool changed)
+        {
             for (int i = mapContent.childCount - 1; i >= 0; i--)
             {
                 Transform child = mapContent.GetChild(i);
@@ -277,13 +404,8 @@ namespace ZombieInfinite
                     continue;
                 }
 
-                DestroyImmediate(child.gameObject);
+                Undo.DestroyObjectImmediate(child.gameObject);
                 changed = true;
-            }
-
-            if (changed && gameObject.scene.IsValid())
-            {
-                EditorSceneManager.MarkSceneDirty(gameObject.scene);
             }
         }
 #endif
