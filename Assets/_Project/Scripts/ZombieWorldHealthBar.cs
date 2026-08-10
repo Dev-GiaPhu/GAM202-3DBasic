@@ -36,12 +36,14 @@ namespace ZombieInfinite
 
         private ZombieChaseReturn zombie;
         private Camera targetCamera;
+        private Canvas worldCanvas;
         private float showUntil;
 
         private void Awake()
         {
             zombie = GetComponent<ZombieChaseReturn>();
             FindMissingPrefabReferences();
+            ResolveGameplayCamera();
 
             if (healthSlider != null)
             {
@@ -50,8 +52,18 @@ namespace ZombieInfinite
 
             if (canvasGroup != null)
             {
+                canvasGroup.alpha = 1f;
                 canvasGroup.interactable = false;
                 canvasGroup.blocksRaycasts = false;
+            }
+
+            if (worldCanvas != null)
+            {
+                worldCanvas.enabled = true;
+                if (targetCamera != null)
+                {
+                    worldCanvas.worldCamera = targetCamera;
+                }
             }
         }
 
@@ -76,14 +88,15 @@ namespace ZombieInfinite
 
         private void Start()
         {
+            ResolveGameplayCamera();
             RefreshHealth(zombie.CurrentHealth, zombie.MaxHealth);
         }
 
         private void LateUpdate()
         {
-            if (targetCamera == null)
+            if (targetCamera == null || !targetCamera.isActiveAndEnabled)
             {
-                targetCamera = Camera.main;
+                ResolveGameplayCamera();
             }
 
             bool canShow = targetCamera != null &&
@@ -145,15 +158,41 @@ namespace ZombieInfinite
             }
         }
 
+        private void ResolveGameplayCamera()
+        {
+            // Camera trong ZombieInfiniteDemo hiện đang Untagged nên Camera.main trả về null.
+            // TopDownCameraFollow nằm trực tiếp trên Camera gameplay, vì vậy ưu tiên lấy Camera tại đó.
+            TopDownCameraFollow cameraFollow = FindFirstObjectByType<TopDownCameraFollow>();
+            if (cameraFollow != null)
+            {
+                Camera gameplayCamera = cameraFollow.GetComponent<Camera>();
+                if (gameplayCamera != null)
+                {
+                    targetCamera = gameplayCamera;
+                }
+            }
+
+            if (targetCamera == null)
+            {
+                targetCamera = Camera.main;
+            }
+
+            if (worldCanvas != null && targetCamera != null)
+            {
+                worldCanvas.worldCamera = targetCamera;
+            }
+        }
+
         private void FindMissingPrefabReferences()
         {
-            if (healthBarRoot == null)
+            if (worldCanvas == null)
             {
-                Canvas worldCanvas = GetComponentInChildren<Canvas>(true);
-                if (worldCanvas != null)
-                {
-                    healthBarRoot = worldCanvas.transform as RectTransform;
-                }
+                worldCanvas = GetComponentInChildren<Canvas>(true);
+            }
+
+            if (healthBarRoot == null && worldCanvas != null)
+            {
+                healthBarRoot = worldCanvas.transform as RectTransform;
             }
 
             Transform searchRoot = healthBarRoot != null ? healthBarRoot : transform;
